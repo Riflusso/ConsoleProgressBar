@@ -1,0 +1,26 @@
+# Build directory (ignore all compiled artifacts)
+/build/
+
+# Compiler temporary and object files (in case of manual builds outside /build)
+*.exe
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.out
+
+# IDE caches and local configuration files (Visual Studio, VS Code, CLion)
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+
+# Windows system files
+Thumbs.db
+Desktop.ini
