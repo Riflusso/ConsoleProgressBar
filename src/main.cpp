@@ -7,7 +7,6 @@
 #include <thread>
 #include <clocale>
 #include <windows.h>
-#include <conio.h>
 
 // Установка позиции курсора в консоли
 void setCursorPosition(int x, int y) {
@@ -83,7 +82,6 @@ void drawProgressBar(int progress, int barWidth, double speed, bool isPaused,
     int startY = screenHeight / 2;
     if (startX < 0) startX = 0;
 
-    // Если размер окна изменился — стираем старый бар и перерисовываем шапку
     if (screenWidth != prevWidth || screenHeight != prevHeight) {
         if (prevY != -1) {
             setCursorPosition(0, prevY);
@@ -95,19 +93,16 @@ void drawProgressBar(int progress, int barWidth, double speed, bool isPaused,
         prevHeight = screenHeight;
         prevSpeed = speed;
     }
-    // Если изменилась скорость — обновляем верхнюю строку
     else if (std::abs(speed - prevSpeed) > 1e-6) {
         drawHeader(screenWidth, speed);
         prevSpeed = speed;
     }
 
-    // Если строка бара стала короче — стираем хвосты
     if (prevX != -1 && prevX < startX && screenHeight == prevHeight) {
         setCursorPosition(prevX, prevY);
         std::cout << std::string(prevWidth - prevX, ' ');
     }
 
-    // Отрисовываем прогресс-бар в центре
     setCursorPosition(startX, startY);
     std::cout << bar;
 
@@ -115,21 +110,46 @@ void drawProgressBar(int progress, int barWidth, double speed, bool isPaused,
     prevY = startY;
 }
 
-// Обработка нажатий клавиш
+// Обработка нажатий клавиш через скан-коды (PS/2 Set 1) и Unicode-символы
 void handleInput(double& progress, double& speed, bool& isPaused, bool& isRunning) {
-    if (_kbhit()) {
-        char key = _getch();
-        if (key == ' ') isPaused = !isPaused;
+    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD eventsCount = 0;
+    GetNumberOfConsoleInputEvents(hIn, &eventsCount);
 
-        // Регулировка скорости прогресс-бара (шаг 0.25, минимум 0.25, максимума нет)
-        if (key == '+' || key == '=') speed += 0.25;
-        if (key == '-' || key == '_') {
-            speed -= 0.25;
-            if (speed < 0.25) speed = 0.25;
+    while (eventsCount > 0) {
+        INPUT_RECORD record;
+        DWORD eventsRead = 0;
+        // Используем именно ReadConsoleInputW (Unicode), чтобы не терять кириллицу
+        ReadConsoleInputW(hIn, &record, 1, &eventsRead);
+        eventsCount--;
+
+        if (record.EventType == KEY_EVENT && record.Event.KeyEvent.bKeyDown) {
+            WORD vk = record.Event.KeyEvent.wVirtualKeyCode;
+            WORD scan = record.Event.KeyEvent.wVirtualScanCode;
+            wchar_t ch = record.Event.KeyEvent.uChar.UnicodeChar;
+
+            // Пробел (VK 0x20, Scan 0x39)
+            if (vk == VK_SPACE || scan == 0x39 || ch == L' ') {
+                isPaused = !isPaused;
+            }
+            // Клавиша '+' / '=' (Scan 0x0D — кнопка '=' рядом с Backspace, Scan 0x4E — '+' на NumPad)
+            else if (vk == VK_OEM_PLUS || vk == VK_ADD || scan == 0x0D || scan == 0x4E || ch == L'+' || ch == L'=') {
+                speed += 0.25;
+            }
+            // Клавиша '-' / '_' (Scan 0x0C — кнопка '-' рядом с 0, Scan 0x4A — '-' на NumPad)
+            else if (vk == VK_OEM_MINUS || vk == VK_SUBTRACT || scan == 0x0C || scan == 0x4A || ch == L'-' || ch == L'_') {
+                speed -= 0.25;
+                if (speed < 0.25) speed = 0.25;
+            }
+            // Клавиша 'R' / 'К' (Scan 0x13 — физическая кнопка R)
+            else if (vk == 'R' || scan == 0x13 || ch == L'r' || ch == L'R' || ch == L'к' || ch == L'К') {
+                progress = 0.0;
+            }
+            // Клавиша 'Q' / 'Й' (Scan 0x10 — физическая кнопка Q)
+            else if (vk == 'Q' || scan == 0x10 || ch == L'q' || ch == L'Q' || ch == L'й' || ch == L'Й') {
+                isRunning = false;
+            }
         }
-
-        if (key == 'r' || key == 'R') progress = 0.0;
-        if (key == 'q' || key == 'Q') isRunning = false;
     }
 }
 
@@ -154,7 +174,7 @@ void waitForNextFrame(std::chrono::steady_clock::time_point frameStart, int fps)
 
 int main() {
     const int barWidth = 40;
-    const int targetFps = 60; // Частота кадров задана в коде
+    const int targetFps = 60;
 
     double progress = 0.0;
     double speed = 1.0;
